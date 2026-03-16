@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Limbo Silhouette - Rishabh Game Group</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #111; font-family: 'Courier New', Courier, monospace; }
+        canvas { display: block; background: linear-gradient(to bottom, #222 0%, #050505 100%); }
+        
+        #ui {
+            position: absolute; top: 20px; width: 100%; text-align: center;
+            color: #555; pointer-events: none; text-transform: uppercase; letter-spacing: 5px;
+        }
+
+        #controls {
+            position: absolute; bottom: 20px; width: 100%; display: flex;
+            justify-content: space-around; pointer-events: none;
+        }
+
+        .btn {
+            width: 60px; height: 60px; background: rgba(255,255,255,0.1);
+            border-radius: 50%; pointer-events: auto; display: flex;
+            align-items: center; justify-content: center; color: white;
+            user-select: none; -webkit-tap-highlight-color: transparent;
+        }
+
+        #game-over {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: black; color: white; display: none;
+            flex-direction: column; align-items: center; justify-content: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">SILENCE</div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="controls">
+        <div class="btn" id="leftBtn">←</div>
+        <div class="btn" id="jumpBtn">↑</div>
+        <div class="btn" id="rightBtn">→</div>
+    </div>
+
+    <div id="game-over">
+        <h1 style="letter-spacing: 10px;">DEPARTED</h1>
+        <p style="color: #666;">Developed by Rishabh Game Group</p>
+        <button onclick="location.reload()" style="background:none; border: 1px solid #444; color: white; padding: 10px 20px; cursor: pointer;">RETRY</button>
+    </div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const gameOverScreen = document.getElementById('game-over');
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    let gravity = 0.8;
+    let friction = 0.8;
+
+    const player = {
+        x: 100,
+        y: canvas.height - 150,
+        width: 30,
+        height: 60,
+        speed: 5,
+        velX: 0,
+        velY: 0,
+        jumping: false,
+        grounded: false,
+        eyesOpacity: 1
+    };
+
+    const keys = {};
+    const platforms = [
+        { x: 0, y: canvas.height - 40, width: canvas.width * 2, height: 50 }, // Ground
+        { x: 400, y: canvas.height - 150, width: 150, height: 20 },
+        { x: 650, y: canvas.height - 250, width: 150, height: 20 },
+        { x: 900, y: canvas.height - 350, width: 200, height: 20 }
+    ];
+
+    const hazards = [
+        { x: 500, y: canvas.height - 70, width: 40, height: 30 } // Spike
+    ];
+
+    // Input Listeners
+    window.addEventListener('keydown', e => keys[e.code] = true);
+    window.addEventListener('keyup', e => keys[e.code] = false);
+
+    // Mobile Controls
+    const setupBtn = (id, code) => {
+        const btn = document.getElementById(id);
+        btn.addEventListener('touchstart', (e) => { e.preventDefault(); keys[code] = true; });
+        btn.addEventListener('touchend', (e) => { e.preventDefault(); keys[code] = false; });
+    };
+    setupBtn('leftBtn', 'ArrowLeft');
+    setupBtn('rightBtn', 'ArrowRight');
+    setupBtn('jumpBtn', 'Space');
+
+    function update() {
+        if (keys['ArrowRight'] || keys['KeyD']) {
+            if (player.velX < player.speed) player.velX++;
+        }
+        if (keys['ArrowLeft'] || keys['KeyA']) {
+            if (player.velX > -player.speed) player.velX--;
+        }
+        if ((keys['Space'] || keys['ArrowUp'] || keys['KeyW']) && !player.jumping && player.grounded) {
+            player.jumping = true;
+            player.grounded = false;
+            player.velY = -player.speed * 2.5;
+        }
+
+        player.velX *= friction;
+        player.velY += gravity;
+
+        player.grounded = false;
+        for (let plat of platforms) {
+            // Basic AABB Collision
+            if (player.x < plat.x + plat.width && player.x + player.width > plat.x &&
+                player.y < plat.y + plat.height && player.y + player.height > plat.y) {
+                
+                if (player.velY > 0) {
+                    player.grounded = true;
+                    player.jumping = false;
+                    player.y = plat.y - player.height;
+                    player.velY = 0;
+                }
+            }
+        }
+
+        // Hazard Collision
+        for (let spike of hazards) {
+            if (player.x < spike.x + spike.width && player.x + player.width > spike.x &&
+                player.y < spike.y + spike.height && player.y + player.height > spike.y) {
+                gameOver();
+            }
+        }
+
+        player.x += player.velX;
+        player.y += player.velY;
+
+        draw();
+        requestAnimationFrame(update);
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw Platforms (Silhouettes)
+        ctx.fillStyle = "#000";
+        platforms.forEach(p => ctx.fillRect(p.x, p.y, p.width, p.height));
+
+        // Draw Hazards
+        ctx.fillStyle = "#000";
+        hazards.forEach(s => {
+            ctx.beginPath();
+            ctx.moveTo(s.x, s.y + s.height);
+            ctx.lineTo(s.x + s.width / 2, s.y);
+            ctx.lineTo(s.x + s.width, s.y + s.height);
+            ctx.fill();
+        });
+
+        // Draw Player (Shadow Boy)
+        ctx.fillStyle = "black";
+        ctx.fillRect(player.x, player.y, player.width, player.height);
+        
+        // Limbo Eyes (Glow)
+        ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.5 + 0.5})`;
+        ctx.fillRect(player.x + 18, player.y + 15, 5, 5);
+        ctx.fillRect(player.x + 5, player.y + 15, 5, 5);
+        
+        // Fog Effect
+        ctx.fillStyle = "rgba(255,255,255,0.05)";
+        ctx.fillRect(0,0, canvas.width, canvas.height);
+    }
+
+    function gameOver() {
+        gameOverScreen.style.display = 'flex';
+        player.speed = 0;
+    }
+
+    update();
+</script>
+</body>
+</html>
