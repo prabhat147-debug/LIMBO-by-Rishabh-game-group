@@ -3,39 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Limbo Silhouette - Rishabh Game Group</title>
+    <title>Limbo: The Dark Path - Rishabh Game Group</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #111; font-family: 'Courier New', Courier, monospace; }
-        canvas { display: block; background: linear-gradient(to bottom, #222 0%, #050505 100%); }
+        body { margin: 0; overflow: hidden; background: #0a0a0a; font-family: 'Georgia', serif; }
+        canvas { display: block; filter: blur(0.4px) contrast(1.2); }
         
-        #ui {
-            position: absolute; top: 20px; width: 100%; text-align: center;
-            color: #555; pointer-events: none; text-transform: uppercase; letter-spacing: 5px;
+        #overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, transparent 30%, black 120%);
+            pointer-events: none;
         }
 
         #controls {
-            position: absolute; bottom: 20px; width: 100%; display: flex;
+            position: absolute; bottom: 30px; width: 100%; display: flex;
             justify-content: space-around; pointer-events: none;
         }
 
         .btn {
-            width: 60px; height: 60px; background: rgba(255,255,255,0.1);
-            border-radius: 50%; pointer-events: auto; display: flex;
-            align-items: center; justify-content: center; color: white;
+            width: 70px; height: 70px; background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.2); border-radius: 50%; 
+            pointer-events: auto; display: flex; align-items: center; 
+            justify-content: center; color: #444; font-size: 24px;
             user-select: none; -webkit-tap-highlight-color: transparent;
         }
 
         #game-over {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: black; color: white; display: none;
+            background: rgba(0,0,0,0.95); color: #ddd; display: none;
             flex-direction: column; align-items: center; justify-content: center;
+            z-index: 10;
         }
     </style>
 </head>
 <body>
 
-    <div id="ui">SILENCE</div>
-
+    <div id="overlay"></div>
     <canvas id="gameCanvas"></canvas>
 
     <div id="controls">
@@ -45,9 +47,9 @@
     </div>
 
     <div id="game-over">
-        <h1 style="letter-spacing: 10px;">DEPARTED</h1>
-        <p style="color: #666;">Developed by Rishabh Game Group</p>
-        <button onclick="location.reload()" style="background:none; border: 1px solid #444; color: white; padding: 10px 20px; cursor: pointer;">RETRY</button>
+        <h2 style="letter-spacing: 8px; font-weight: 100;">LOST IN THE DARK</h2>
+        <p style="color: #444; margin-bottom: 30px;">Developed by Rishabh game group</p>
+        <button onclick="location.reload()" style="background:none; border: 1px solid #333; color: #888; padding: 12px 30px; cursor: pointer; letter-spacing: 2px;">AWAKEN</button>
     </div>
 
 <script>
@@ -58,89 +60,107 @@
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    let gravity = 0.8;
-    let friction = 0.8;
+    let gravity = 0.6;
+    let friction = 0.85;
+    let gameActive = true;
 
     const player = {
-        x: 100,
-        y: canvas.height - 150,
-        width: 30,
-        height: 60,
-        speed: 5,
-        velX: 0,
-        velY: 0,
-        jumping: false,
-        grounded: false,
-        eyesOpacity: 1
+        x: 50, y: 100, width: 25, height: 50,
+        velX: 0, velY: 0, speed: 4, jumping: false, grounded: false
     };
 
-    const keys = {};
+    // Obstacles & Platforms
     const platforms = [
-        { x: 0, y: canvas.height - 40, width: canvas.width * 2, height: 50 }, // Ground
-        { x: 400, y: canvas.height - 150, width: 150, height: 20 },
-        { x: 650, y: canvas.height - 250, width: 150, height: 20 },
-        { x: 900, y: canvas.height - 350, width: 200, height: 20 }
+        { x: 0, y: canvas.height - 60, w: 500, h: 100 },      // Start Floor
+        { x: 600, y: canvas.height - 60, w: 800, h: 100 },    // Second Floor
+        { x: 250, y: canvas.height - 180, w: 100, h: 20 },    // Floating ledge
+        { x: 1100, y: canvas.height - 180, w: 300, h: 20 }    // High ledge
     ];
 
-    const hazards = [
-        { x: 500, y: canvas.height - 70, width: 40, height: 30 } // Spike
+    const boxes = [
+        { x: 300, y: canvas.height - 110, w: 40, h: 40, velX: 0, velY: 0 } // Pushable Box
     ];
 
-    // Input Listeners
+    const saws = [
+        { x: 750, y: canvas.height - 60, radius: 35, angle: 0, speed: 0.1, range: 150, startX: 750 }
+    ];
+
+    const keys = {};
     window.addEventListener('keydown', e => keys[e.code] = true);
     window.addEventListener('keyup', e => keys[e.code] = false);
 
-    // Mobile Controls
-    const setupBtn = (id, code) => {
-        const btn = document.getElementById(id);
-        btn.addEventListener('touchstart', (e) => { e.preventDefault(); keys[code] = true; });
-        btn.addEventListener('touchend', (e) => { e.preventDefault(); keys[code] = false; });
+    // Mobile Input
+    const touch = (id, code) => {
+        const b = document.getElementById(id);
+        b.onpointerdown = (e) => { e.preventDefault(); keys[code] = true; };
+        b.onpointerup = (e) => { e.preventDefault(); keys[code] = false; };
     };
-    setupBtn('leftBtn', 'ArrowLeft');
-    setupBtn('rightBtn', 'ArrowRight');
-    setupBtn('jumpBtn', 'Space');
+    touch('leftBtn', 'ArrowLeft'); touch('rightBtn', 'ArrowRight'); touch('jumpBtn', 'Space');
 
     function update() {
-        if (keys['ArrowRight'] || keys['KeyD']) {
-            if (player.velX < player.speed) player.velX++;
-        }
-        if (keys['ArrowLeft'] || keys['KeyA']) {
-            if (player.velX > -player.speed) player.velX--;
-        }
-        if ((keys['Space'] || keys['ArrowUp'] || keys['KeyW']) && !player.jumping && player.grounded) {
-            player.jumping = true;
+        if (!gameActive) return;
+
+        // Movement
+        if (keys['ArrowRight']) player.velX < player.speed && player.velX++;
+        if (keys['ArrowLeft']) player.velX > -player.speed && player.velX--;
+        if ((keys['Space'] || keys['ArrowUp']) && player.grounded) {
+            player.velY = -12;
             player.grounded = false;
-            player.velY = -player.speed * 2.5;
         }
 
-        player.velX *= friction;
         player.velY += gravity;
-
+        player.velX *= friction;
         player.grounded = false;
-        for (let plat of platforms) {
-            // Basic AABB Collision
-            if (player.x < plat.x + plat.width && player.x + player.width > plat.x &&
-                player.y < plat.y + plat.height && player.y + player.height > plat.y) {
-                
+
+        // Box Physics & Collision
+        boxes.forEach(box => {
+            box.velY += gravity;
+            box.velX *= friction;
+            
+            // Player pushing box
+            if (player.x + player.width > box.x && player.x < box.x + box.w && 
+                player.y + player.height > box.y && player.y < box.y + box.h) {
+                if (player.x < box.x) box.velX = 2;
+                if (player.x > box.x) box.velX = -2;
+            }
+
+            // Box floor collision
+            platforms.forEach(p => {
+                if (box.x < p.x + p.w && box.x + box.w > p.x && box.y + box.h > p.y && box.y < p.y + p.h) {
+                    box.y = p.y - box.h;
+                    box.velY = 0;
+                }
+            });
+            box.x += box.velX; box.y += box.velY;
+        });
+
+        // Player/Platform/Box Collision
+        let targets = [...platforms, ...boxes];
+        targets.forEach(t => {
+            let tw = t.w || t.width; let th = t.h || t.height;
+            if (player.x < t.x + tw && player.x + player.width > t.x && 
+                player.y + player.height > t.y && player.y < t.y + th) {
                 if (player.velY > 0) {
                     player.grounded = true;
-                    player.jumping = false;
-                    player.y = plat.y - player.height;
+                    player.y = t.y - player.height;
                     player.velY = 0;
                 }
             }
-        }
+        });
 
-        // Hazard Collision
-        for (let spike of hazards) {
-            if (player.x < spike.x + spike.width && player.x + player.width > spike.x &&
-                player.y < spike.y + spike.height && player.y + player.height > spike.y) {
-                gameOver();
-            }
-        }
+        // Saw Animation & Collision
+        saws.forEach(s => {
+            s.angle += 0.2;
+            s.x = s.startX + Math.sin(Date.now() * 0.002) * s.range;
+            let dx = (player.x + 12) - s.x;
+            let dy = (player.y + 25) - s.y;
+            if (Math.sqrt(dx*dx + dy*dy) < s.radius) die();
+        });
 
         player.x += player.velX;
         player.y += player.velY;
+
+        if (player.y > canvas.height) die();
 
         draw();
         requestAnimationFrame(update);
@@ -149,40 +169,22 @@
     function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Draw Platforms (Silhouettes)
+        // Draw Platforms
         ctx.fillStyle = "#000";
-        platforms.forEach(p => ctx.fillRect(p.x, p.y, p.width, p.height));
+        platforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
 
-        // Draw Hazards
-        ctx.fillStyle = "#000";
-        hazards.forEach(s => {
-            ctx.beginPath();
-            ctx.moveTo(s.x, s.y + s.height);
-            ctx.lineTo(s.x + s.width / 2, s.y);
-            ctx.lineTo(s.x + s.width, s.y + s.height);
-            ctx.fill();
+        // Draw Box
+        ctx.strokeStyle = "#333";
+        boxes.forEach(b => {
+            ctx.fillStyle = "#050505";
+            ctx.fillRect(b.x, b.y, b.w, b.h);
+            ctx.strokeRect(b.x+5, b.y+5, b.w-10, b.h-10);
         });
 
-        // Draw Player (Shadow Boy)
-        ctx.fillStyle = "black";
-        ctx.fillRect(player.x, player.y, player.width, player.height);
-        
-        // Limbo Eyes (Glow)
-        ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.5 + 0.5})`;
-        ctx.fillRect(player.x + 18, player.y + 15, 5, 5);
-        ctx.fillRect(player.x + 5, player.y + 15, 5, 5);
-        
-        // Fog Effect
-        ctx.fillStyle = "rgba(255,255,255,0.05)";
-        ctx.fillRect(0,0, canvas.width, canvas.height);
-    }
-
-    function gameOver() {
-        gameOverScreen.style.display = 'flex';
-        player.speed = 0;
-    }
-
-    update();
-</script>
-</body>
-</html>
+        // Draw Saw
+        saws.forEach(s => {
+            ctx.save();
+            ctx.translate(s.x, s.y);
+            ctx.rotate(s.angle);
+            ctx.fillStyle = "#111";
+            for(let
